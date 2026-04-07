@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: cctv-classifier-api
+    runtime: python
+    rootDir: cloud_api
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+    - key: CLOUD_API_KEY
+      generateValue: true
+    - key: GCP_PROJECT_ID
+      sync: false
+    - key: GCP_REGION
+      value: "us-central1"
+    - key: GCP_CREDENTIALS_B64
+      sync: false
+    - key: PUSHOVER_APP_TOKEN
+      sync: false
+    - key: PUSHOVER_USER_KEY
+      sync: false
+    - key: CONFIDENCE_THRESHOLD
+      value: "0.75"
+    - key: NOTIFICATION_COOLDOWN_SECONDS
+      value: "120"

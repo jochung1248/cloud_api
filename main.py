@@ -20,6 +20,7 @@ import logging
 import os
 import tempfile
 import time
+from contextlib import asynccontextmanager
 
 import httpx
 import vertexai
@@ -30,7 +31,6 @@ from vertexai.generative_models import GenerativeModel, Image
 logging.basicConfig(level=logging.INFO, format = "%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger(__name__)
 
-app = FastAPI(title="CCTV Parkign Ranger Classifier")
 
 # -- Config -------------------------------------------------------------------------------
 
@@ -46,11 +46,15 @@ CONFIDENCE_THRESHOLD    = float(os.environ.get("CONFIDENCE_THRESHOLD", "0.75"))
 NOTIFICATION_COOLDOWN_SECONDS = int(os.environ.get("NOTIFICATION_COOLDOWN_SECONDS", "120"))
 _last_notification_time: float = 0.0
 
-# -- GCP credentials bootstrap --------------------------------------------------------------
-# Render isn't GCP, so we decode the service account JSON from the env var and
-# write it to a temp file that the SDK picks up via GOOGLE_APPLICATION_CREDENTIALS
+# Initialised during startup lifespan - not at import time
+gemini: GenerativeModel | None = None
 
-def _bootstrap_gcp_credentials():
+# -- Lifespan -------------------------------------------------------------------------------
+
+@asynccontextmanager
+async def lifespan(_):
+    global gemini
+    # Decode serviuce account JSON and point the SDK at it
     creds_json = base64.b64decode(GCP_CREDENTIALS_B64)
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".json")
     tmp.write(creds_json)
@@ -58,9 +62,15 @@ def _bootstrap_gcp_credentials():
     os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = tmp.name
     log.info("GCP credentials written to %s", tmp.name)
 
-_bootstrap_gcp_credentials()
-vertexai.init(project=GCP_PROJECT_ID, location=GCP_REGION)
-gemini = GenerativeModel("gemini-2.5-pro")
+
+    vertexai.init(project=GCP_PROJECT_ID, location=GCP_REGION)
+    gemini = GenerativeModel("gemini-2.5-pro")
+    log.info("Vertex AI initialised (project=%s region=%s)", GCP_PROJECT_ID, GCP_REGION)
+
+    yield
+    log.info("Shutting down")
+
+app = FastAPI(title = "CCTV Parking Ranger Classifier", lifespan = lifespan)
 
 # -- Auth -----------------------------------------------------------------------------------
 

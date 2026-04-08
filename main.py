@@ -111,6 +111,7 @@ async def classify_frame(jpeg_bytes: bytes) -> dict:
         [image, PROMPT],
         generation_config={"max_output_tokens": 150, "temperature": 0}
     )
+    log.info(f"This is the response: {response}")
     # Robustly extract text from different GenerationResponse shapes
     if hasattr(response, "text"):
         text = response.text.strip()
@@ -127,6 +128,7 @@ async def classify_frame(jpeg_bytes: bytes) -> dict:
         text = text.split("```")[1]
         if text.startswith("json"):
             text = text[4:]
+
     return json.loads(text)
 
 # -- Pushover notification -------------------------------------------------------------------

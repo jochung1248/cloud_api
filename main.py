@@ -94,14 +94,6 @@ Respond ONLY with a JSON object in this exact format (no markdown, no extra text
 
 """
 
-PROMPT = """\
-You are a computer vision assistant analysing CCTV footage for a small business.
-Your task is to determine whether a person is visible in the image.
-
-Respond ONLY with a JSON object in this exact format (no markdown, no extra text):
-{"ranger_detected": tru/false, "confidence": 0.0-1.0, "reason": "brief explanation"}
-"""
-
 
 async def classify_frame(jpeg_bytes: bytes) -> dict:
     image = Image.from_bytes(jpeg_bytes)
@@ -133,25 +125,33 @@ async def classify_frame(jpeg_bytes: bytes) -> dict:
 
 # -- Pushover notification -------------------------------------------------------------------
 
-async def send_pushover(reason: str, confidence: float):
+async def send_pushover(reason: str, confidence: float, jpeg_bytes: bytes | None = None):
     global _last_notification_time
     now = time.monotonic()
     if now - _last_notification_time < NOTIFICATION_COOLDOWN_SECONDS:
         log.info("Notification suppressed (cooldown active)")
         return
     async with httpx.AsyncClient() as client:
-        resp = await client.post(
-            "https://api.pushover.net/1/messages.json",
-            data= {
-                "token":    PUSHOVER_APP_TOKEN,
-                "user":     PUSHOVER_USER_KEY,
-                "title":    "Parking Ranger Spotted!",
-                "message":  f"A parking ranger has been detected outside ({confidence:.0%} confidence). {reason}",
-                "sound":    "siren",
-                "priority": 1, # high priority - bypasses quiet hours
-            },
-            timeout=10
-        )
+        # Pushover supports a single file attachment under the 'attachment' multipart field.
+        # If we have JPEG bytes, send as multipart/form-data with files; otherwise send as form data.
+        url = "https://api.pushover.net/1/messages.json"
+        common_data = {
+            "token":    PUSHOVER_APP_TOKEN,
+            "user":     PUSHOVER_USER_KEY,
+            "title":    "Parking Ranger Spotted!",
+            "message":  f"A parking ranger has been detected outside ({confidence:.0%} confidence). {reason}",
+            "sound":    "siren",
+            "priority": 1, # high priority - bypasses quiet hours
+        }
+
+        if jpeg_bytes:
+            files = {
+                # filename can be anything; ensure correct content-type
+                "attachment": ("frame.jpg", jpeg_bytes, "image/jpeg")
+            }
+            resp = await client.post(url, data=common_data, files=files, timeout=10)
+        else:
+            resp = await client.post(url, data=common_data, timeout=10)
     resp.raise_for_status()
     _last_notification_time = now
     log.info("Pushover notification sent (confidence=%.2f)", confidence)
@@ -194,7 +194,8 @@ async def classify(
     notification_sent = False
     if ranger_detected and confidence >= CONFIDENCE_THRESHOLD:
         try:
-            await send_pushover(reason, confidence)
+            # Pass the original JPEG bytes so the device receives the image as an attachment
+            await send_pushover(reason, confidence, jpeg_bytes)
             notification_sent = True
         except Exception as exc:
             log.error("Pushover failed: %s", exc)

@@ -94,6 +94,15 @@ Respond ONLY with a JSON object in this exact format (no markdown, no extra text
 
 """
 
+PROMPT = """\
+You are a computer vision assistant analysing CCTV footage for a small business.
+Your task is to determine whether a person is visible in the image.
+
+Respond ONLY with a JSON object in this exact format (no markdown, no extra text):
+{"ranger_detected": tru/false, "confidence": 0.0-1.0, "reason": "brief explanation"}
+"""
+
+
 async def classify_frame(jpeg_bytes: bytes) -> dict:
     image = Image.from_bytes(jpeg_bytes)
     # vertexai SDK is synchronous - run in a thread so we don't block the event loop
@@ -102,7 +111,17 @@ async def classify_frame(jpeg_bytes: bytes) -> dict:
         [image, PROMPT],
         generation_config={"max_output_tokens": 150, "temperature": 0}
     )
-    text = response.text_strip()
+    # Robustly extract text from different GenerationResponse shapes
+    if hasattr(response, "text"):
+        text = response.text.strip()
+    elif hasattr(response, "output_text"):
+        text = response.output_text.strip()
+    elif hasattr(response, "generations") and response.generations:
+        gen0 = response.generations[0]
+        text = getattr(gen0, "text", str(gen0)).strip()
+    else:
+        text = str(response).strip()
+        
     # Strip accidental mardown fences
     if text.startswith("```"):
         text = text.split("```")[1]

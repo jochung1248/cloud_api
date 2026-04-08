@@ -109,7 +109,7 @@ async def classify_frame(jpeg_bytes: bytes) -> dict:
     response = await asyncio.to_thread(
         gemini.generate_content,
         [image, PROMPT],
-        generation_config={"max_output_tokens": 150, "temperature": 0}
+        generation_config={"max_output_tokens": 3000, "temperature": 0}
     )
     log.info(f"This is the response: {response}")
     # Robustly extract text from different GenerationResponse shapes

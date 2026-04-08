@@ -98,7 +98,7 @@ async def classify_frame(jpeg_bytes: bytes) -> dict:
     image = Image.from_bytes(jpeg_bytes)
     # vertexai SDK is synchronous - run in a thread so we don't block the event loop
     response = await asyncio.to_thread(
-        gemini.egenerate_content,
+        gemini.generate_content,
         [image, PROMPT],
         generation_config={"max_output_tokens": 150, "temperature": 0}
     )
